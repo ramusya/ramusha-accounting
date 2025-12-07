@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>お店収支管理 簡易版（CSV書き出し付き）</title>
+  <title>お店収支管理 簡易版（月次集計つき）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     * { box-sizing: border-box; }
@@ -57,6 +57,7 @@
     input[type="number"],
     input[type="text"],
     input[type="date"],
+    input[type="month"],
     select {
       width: 100%;
       padding: 6px 8px;
@@ -404,6 +405,94 @@
       </div>
       <div class="status" id="statusMessage"></div>
     </div>
+
+    <div class="card">
+      <h2>月次集計</h2>
+      <div class="row">
+        <div class="field">
+          <label for="monthInput">対象月</label>
+          <input type="month" id="monthInput">
+        </div>
+        <div class="field">
+          <div class="small-note">保存されている日別データから自動集計</div>
+        </div>
+      </div>
+
+      <div class="summary-line">
+        <div class="summary-label">集計対象日数</div>
+        <div class="summary-value" id="m_days">0</div>
+      </div>
+
+      <div class="summary-line">
+        <div class="summary-label">売上合計</div>
+        <div class="summary-value" id="m_sales_total">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">現金合計</div>
+        <div class="summary-value" id="m_cash_total">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">クレカ合計</div>
+        <div class="summary-value" id="m_cc_total">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">iD／QUICPay合計</div>
+        <div class="summary-value" id="m_id_total">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">交通系合計</div>
+        <div class="summary-value" id="m_transit_total">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">QR決済合計</div>
+        <div class="summary-value" id="m_qr_total">0</div>
+      </div>
+
+      <div class="summary-line">
+        <div class="summary-label">クレカ手数料合計</div>
+        <div class="summary-value" id="m_fee_cc">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">iD／QUICPay手数料合計</div>
+        <div class="summary-value" id="m_fee_id">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">交通系手数料合計</div>
+        <div class="summary-value" id="m_fee_transit">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">QR手数料合計</div>
+        <div class="summary-value" id="m_fee_qr">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">決済手数料合計</div>
+        <div class="summary-value" id="m_fee_total">0</div>
+      </div>
+
+      <div class="summary-line">
+        <div class="summary-label">人件費合計</div>
+        <div class="summary-value" id="m_staff_total">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">その他経費合計</div>
+        <div class="summary-value" id="m_otherexp_total">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">支出合計（人件費含む）</div>
+        <div class="summary-value" id="m_exp_total">0</div>
+      </div>
+
+      <div class="summary-line">
+        <div class="summary-label">手数料差引後売上</div>
+        <div class="summary-value" id="m_net_sales_total">0</div>
+      </div>
+      <div class="summary-line">
+        <div class="summary-label">月次利益の目安</div>
+        <div class="summary-value" id="m_profit_total">0</div>
+      </div>
+
+      <div class="status" id="monthStatus"></div>
+    </div>
   </div>
 
   <script>
@@ -519,6 +608,7 @@
           staffRows.splice(index, 1);
           renderStaffTable();
           recalc();
+          recalcMonthly();
         };
         tdAction.appendChild(btn);
 
@@ -548,6 +638,7 @@
       amountInput.value = "";
       renderStaffTable();
       recalc();
+      recalcMonthly();
       status.textContent = "";
     }
 
@@ -643,6 +734,8 @@
       data[date] = record;
       saveAllData(data);
       status.textContent = "保存しました。";
+
+      recalcMonthly();
     }
 
     function clearInputsForCurrentDay() {
@@ -662,6 +755,7 @@
       staffRows = [];
       renderStaffTable();
       recalc();
+      recalcMonthly();
       const status = document.getElementById("statusMessage");
       status.textContent = "この日の入力をクリアしました。（保存データは消していません）";
     }
@@ -717,6 +811,7 @@
       document.getElementById("exp_other_amount").value = ex.otherAmount || "";
 
       recalc();
+      recalcMonthly();
       status.textContent = "保存されているこの日のデータを読み込みました。";
     }
 
@@ -725,7 +820,16 @@
       const y = today.getFullYear();
       const m = String(today.getMonth() + 1).padStart(2, "0");
       const d = String(today.getDate()).padStart(2, "0");
-      document.getElementById("dateInput").value = `${y}-${m}-${d}`;
+      const dateEl = document.getElementById("dateInput");
+      if (dateEl) dateEl.value = `${y}-${m}-${d}`;
+    }
+
+    function setCurrentMonth() {
+      const today = new Date();
+      const y = today.getFullYear();
+      const m = String(today.getMonth() + 1).padStart(2, "0");
+      const monthEl = document.getElementById("monthInput");
+      if (monthEl) monthEl.value = `${y}-${m}`;
     }
 
     function csvCell(value) {
@@ -877,6 +981,183 @@
       status.textContent = "保存されている全ての日付をCSVに書き出しました。";
     }
 
+    function zeroMonthly() {
+      setText("m_days", 0);
+      setText("m_sales_total", 0);
+      setText("m_cash_total", 0);
+      setText("m_cc_total", 0);
+      setText("m_id_total", 0);
+      setText("m_transit_total", 0);
+      setText("m_qr_total", 0);
+      setText("m_fee_cc", 0);
+      setText("m_fee_id", 0);
+      setText("m_fee_transit", 0);
+      setText("m_fee_qr", 0);
+      setText("m_fee_total", 0);
+      setText("m_staff_total", 0);
+      setText("m_otherexp_total", 0);
+      setText("m_exp_total", 0);
+      setText("m_net_sales_total", 0);
+      setText("m_profit_total", 0);
+    }
+
+    function recalcMonthly() {
+      const all = getAllData();
+      const monthEl = document.getElementById("monthInput");
+      const statusEl = document.getElementById("monthStatus");
+      if (!monthEl) return;
+      const mv = monthEl.value;
+      if (!mv) {
+        zeroMonthly();
+        if (statusEl) statusEl.textContent = "対象月を選択してください。";
+        return;
+      }
+
+      const prefix = mv; // "YYYY-MM"
+      const dates = Object.keys(all).filter(d => d.startsWith(prefix)).sort();
+
+      if (dates.length === 0) {
+        zeroMonthly();
+        if (statusEl) statusEl.textContent = "この月の保存データはありません。";
+        return;
+      }
+
+      let days = 0;
+      let sales_total = 0;
+      let cash_total = 0;
+      let cc_total = 0;
+      let id_total = 0;
+      let transit_total = 0;
+      let qr_total = 0;
+
+      let fee_cc_total = 0;
+      let fee_id_total = 0;
+      let fee_transit_total = 0;
+      let fee_qr_total = 0;
+      let fee_total_all = 0;
+
+      let staff_total_all = 0;
+      let otherexp_total_all = 0;
+      let exp_total_all = 0;
+
+      let net_sales_total = 0;
+      let profit_total = 0;
+
+      dates.forEach(date => {
+        const rec = all[date] || {};
+        const qrRate = Number(rec.qrRate) || 0;
+
+        const dine = (rec.sales && rec.sales.dine) || {};
+        const take = (rec.sales && rec.sales.take) || {};
+
+        const dine_cash = Number(dine.cash) || 0;
+        const dine_cc = Number(dine.cc) || 0;
+        const dine_id = Number(dine.id) || 0;
+        const dine_transit = Number(dine.transit) || 0;
+        const dine_qr = Number(dine.qr) || 0;
+
+        const take_cash = Number(take.cash) || 0;
+        const take_cc = Number(take.cc) || 0;
+        const take_id = Number(take.id) || 0;
+        const take_transit = Number(take.transit) || 0;
+        const take_qr = Number(take.qr) || 0;
+
+        const sum_dine = dine_cash + dine_cc + dine_id + dine_transit + dine_qr;
+        const sum_take = take_cash + take_cc + take_id + take_transit + take_qr;
+        const sum_sales = sum_dine + sum_take;
+
+        const sum_cash = dine_cash + take_cash;
+        const sum_cc = dine_cc + take_cc;
+        const sum_id = dine_id + take_id;
+        const sum_transit = dine_transit + take_transit;
+        const sum_qr = dine_qr + take_qr;
+
+        const fee_cc = calcFee(sum_cc, 2.48);
+        const fee_id = calcFee(sum_id, 3.24);
+        const fee_transit = calcFee(sum_transit, 2.95);
+        const fee_qr = calcFee(sum_qr, qrRate);
+        const fee_total = fee_cc + fee_id + fee_transit + fee_qr;
+        const net_sales = sum_sales - fee_total;
+
+        let staff_total = 0;
+        if (Array.isArray(rec.staffRows)) {
+          rec.staffRows.forEach(r => {
+            staff_total += Number(r.amount) || 0;
+          });
+        }
+
+        const ex = rec.expenses || {};
+        const exp_shiire = Number(ex.shiire) || 0;
+        const exp_zappi = Number(ex.zappi) || 0;
+        const exp_suido = Number(ex.suido) || 0;
+        const exp_yachin = Number(ex.yachin) || 0;
+        const exp_yakuin = Number(ex.yakuin) || 0;
+        const exp_shain = Number(ex.shain) || 0;
+        const exp_gas = Number(ex.gas) || 0;
+        const exp_kotsu = Number(ex.kotsu) || 0;
+        const exp_fukuri = Number(ex.fukuri) || 0;
+        const exp_sonpo = Number(ex.sonpo) || 0;
+        const exp_lease = Number(ex.lease) || 0;
+        const exp_shahoken = Number(ex.shahoken) || 0;
+        const exp_tsushin = Number(ex.tsushin) || 0;
+        const exp_shizei = Number(ex.shizei) || 0;
+        const exp_kokko = Number(ex.kokko) || 0;
+        const exp_other_amount = Number(ex.otherAmount) || 0;
+
+        const otherExpTotal =
+          exp_shiire + exp_zappi + exp_suido + exp_yachin + exp_yakuin +
+          exp_shain + exp_gas + exp_kotsu + exp_fukuri + exp_sonpo +
+          exp_lease + exp_shahoken + exp_tsushin + exp_shizei + exp_kokko +
+          exp_other_amount;
+
+        const expense_total = staff_total + otherExpTotal;
+        const profit = net_sales - expense_total;
+
+        days += 1;
+        sales_total += sum_sales;
+        cash_total += sum_cash;
+        cc_total += sum_cc;
+        id_total += sum_id;
+        transit_total += sum_transit;
+        qr_total += sum_qr;
+
+        fee_cc_total += fee_cc;
+        fee_id_total += fee_id;
+        fee_transit_total += fee_transit;
+        fee_qr_total += fee_qr;
+        fee_total_all += fee_total;
+
+        staff_total_all += staff_total;
+        otherexp_total_all += otherExpTotal;
+        exp_total_all += expense_total;
+
+        net_sales_total += net_sales;
+        profit_total += profit;
+      });
+
+      setText("m_days", days);
+      setText("m_sales_total", sales_total);
+      setText("m_cash_total", cash_total);
+      setText("m_cc_total", cc_total);
+      setText("m_id_total", id_total);
+      setText("m_transit_total", transit_total);
+      setText("m_qr_total", qr_total);
+      setText("m_fee_cc", fee_cc_total);
+      setText("m_fee_id", fee_id_total);
+      setText("m_fee_transit", fee_transit_total);
+      setText("m_fee_qr", fee_qr_total);
+      setText("m_fee_total", fee_total_all);
+      setText("m_staff_total", staff_total_all);
+      setText("m_otherexp_total", otherexp_total_all);
+      setText("m_exp_total", exp_total_all);
+      setText("m_net_sales_total", net_sales_total);
+      setText("m_profit_total", profit_total);
+
+      if (statusEl) {
+        statusEl.textContent = `${days}日分のデータを集計しました。`;
+      }
+    }
+
     function attachEvents() {
       const numberIds = [
         "dine_cash","dine_cc","dine_id","dine_transit","dine_qr",
@@ -888,7 +1169,10 @@
       ];
       numberIds.forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener("input", recalc);
+        if (el) el.addEventListener("input", () => {
+          recalc();
+          recalcMonthly();
+        });
       });
 
       document.getElementById("addStaffRowBtn")
@@ -907,17 +1191,24 @@
           const date = e.target.value;
           if (date) loadDay(date);
         });
+
+      const monthEl = document.getElementById("monthInput");
+      if (monthEl) {
+        monthEl.addEventListener("change", recalcMonthly);
+      }
     }
 
     window.addEventListener("DOMContentLoaded", () => {
       setToday();
+      setCurrentMonth();
       attachEvents();
       const dateInput = document.getElementById("dateInput");
-      if (dateInput.value) {
+      if (dateInput && dateInput.value) {
         loadDay(dateInput.value);
       } else {
         recalc();
       }
+      recalcMonthly();
     });
   </script>
 </body>
